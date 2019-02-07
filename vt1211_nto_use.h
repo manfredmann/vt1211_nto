@@ -28,4 +28,5 @@ Options:
  -i   CIR   Configuration Index Register (hex). Default is 0x002E
  -d   CDR   Configuration Data Register (hex).  Default is 0x002F
  -p36 Ports 3..6 enable
+ -v   Verbose
 #endif
