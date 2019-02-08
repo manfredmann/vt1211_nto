@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <devctl.h>
 #include <string.h>
@@ -33,9 +34,27 @@
 #include "vt1211_ipc.h"
 #include "vt1211_gpio/src/vt1211_gpio.h"
 
-static resmgr_connect_funcs_t    connect_funcs;
-static resmgr_io_funcs_t         io_funcs;
-static iofunc_attr_t             attr;
+typedef struct {
+  uint16_t cir;
+  uint16_t cdr;
+  uint8_t ports36;
+  uint8_t verbose;
+} params_t;
+
+static params_t                   params;
+static const char*                params_str = "i:d:pv";
+static resmgr_connect_funcs_t     connect_funcs;
+static resmgr_io_funcs_t          io_funcs;
+static iofunc_attr_t              attr;
+
+static void debugf(const char *format, ... ) {
+  if (params.verbose) {
+    va_list args;
+    va_start (args, format);
+    vprintf(format, args);
+    va_end (args);
+  }
+}
 
 int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
   int   rc;
@@ -49,11 +68,11 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
   gpio_portinfo_t *port_info;
   gpio_data_t     *port_data;
 
-  //printf("dcmd: %0X\n", msg->i.dcmd);
+  debugf("dcmd: %0X\n", msg->i.dcmd);
 
   switch (msg->i.dcmd) {
     case VT1211_GET_INFO: {
-      printf("Action: info\n");
+      debugf("Action: info\n");
       gpio_portinfo_t *port_info = (gpio_portinfo_t *)data;
       port_info->count = 1;
  
@@ -65,7 +84,7 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
       port_data = (gpio_data_t *)data;
       
       vt_pin_mode(port_data->port, port_data->pin, port_data->data);
-      printf("Action: config pin. Port: %d, Pin: %d\n", port_data->port, port_data->pin);
+      debugf("Action: config pin. Port: %d, Pin: %d\n", port_data->port, port_data->pin);
 
       rc = EOK;
       break;
@@ -74,7 +93,7 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
       port_data = (gpio_data_t *)data;
       
       vt_pin_set(port_data->port, port_data->pin, port_data->data);
-      printf("Action: set pin. Port: %d, Pin: %d\n", port_data->port, port_data->pin);
+      debugf("Action: set pin. Port: %d, Pin: %d\n", port_data->port, port_data->pin);
 
       rc = EOK;
       break;
@@ -83,7 +102,7 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
       port_data = (gpio_data_t *)data;
       
       port_data->data = vt_pin_get(port_data->port, port_data->pin);
-      printf("Action: get pin. Port: %d, Pin: %d\n", port_data->port, port_data->pin);
+      debugf("Action: get pin. Port: %d, Pin: %d\n", port_data->port, port_data->pin);
 
       nbytes = sizeof(gpio_data_t);
       rc = EOK;
@@ -93,7 +112,7 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
       port_data = (gpio_data_t *)data;
 
       vt_port_mode(port_data->port, port_data->data);
-      printf("Action: config port. Port: %d", port_data->port);
+      debugf("Action: config port. Port: %d", port_data->port);
 
       rc = EOK;
       break;
@@ -102,7 +121,7 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
       port_data = (gpio_data_t *)data;
       
       vt_port_write(port_data->port, port_data->data);
-      printf("Action: set port. Port: %d", port_data->port);
+      debugf("Action: set port. Port: %d Data: %02X\n", port_data->port, port_data->data);
 
       rc = EOK;
       break;
@@ -111,7 +130,7 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
       port_data = (gpio_data_t *)data;
 
       port_data->data = vt_port_read(port_data->port);
-      printf("Action: get port. Port: %d", port_data->port);
+      debugf("Action: get port. Port: %d", port_data->port);
 
       nbytes = sizeof(gpio_data_t);
       rc = EOK;
@@ -135,73 +154,114 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
 
   return rc;
 }
+void params_init(int argc, char **argv) {
+  params.verbose  = 0;
+  params.ports36  = 0;
+  params.cir      = 0x002E;
+  params.cdr      = 0x002F;
 
-int main(int argc, char **argv) {
-  printf("==============================================\n");
-  printf("Request I/O privileges:\t");
+  int opt = getopt( argc, argv, params_str);
+  while( opt != -1 ) {
+    switch( opt ) {
+      case 'i': {
+        params.cir = (int)strtol(optarg, NULL, 16);
+        break;
+      }
+      case 'd': {
+        params.cdr = (int)strtol(optarg, NULL, 16);
+        break;
+      }
+      case 'p': {
+        params.ports36 = 1;
+        break;
+      }
+      case 'v': {
+        params.verbose = 1;
+        break;
+      }
+      default: {
+        break;
+      }
+    }
+         
+    opt = getopt( argc, argv, params_str );
+  }
+}
+
+int vt1211_init() {
+  debugf("==============================================\n");
+  debugf("Request I/O privileges:\t");
 
   if (!io_request()) {
-    printf("ERROR\n");
+    debugf("ERROR\n");
     return EXIT_FAILURE;
   } else {
-    printf("OK\n");
+    debugf("OK\n");
   }
 
-  printf("VT1211 Init:\t\t");
+  debugf("VT1211 Init:\t\t");
 
-  int r = vt_init(VT_CONFIG_PORT_1 | VT_CONFIG_PORT_3_6);
+  int r;
+
+  if (params.ports36) {
+    r = vt_init(VT_CONFIG_PORT_1 | VT_CONFIG_PORT_3_6);
+  } else {
+    r = vt_init(VT_CONFIG_PORT_1);
+  }
 
   switch (r) {
     case VT_INIT_NOT_FOUND: {
-      printf("ERROR VT1211 Not found\n");
-      printf("==============================================\n");
+      debugf("ERROR VT1211 Not found\n");
+      debugf("==============================================\n");
       return EXIT_FAILURE;
     }
     case VT_INIT_NO_PORT: {
-      printf("ERROR No port selected\n");
-      printf("==============================================\n");
+      debugf("ERROR No port selected\n");
+      debugf("==============================================\n");
       return EXIT_FAILURE;
     }
     case VT_INIT_OK:
     default: {
-      printf("OK\n");
+      debugf("OK\n");
     }
   }
 
-  uint8_t vt_id     = vt_get_dev_id();
-  uint8_t vt_rev    = vt_get_dev_rev();
-  uint16_t vt_base  = vt_get_baddr();
+  uint8_t   vt_id    = vt_get_dev_id();
+  uint8_t   vt_rev   = vt_get_dev_rev();
+  uint16_t  vt_base  = vt_get_baddr();
 
-  printf("VT1211 ID: %02X, Revision: %02X, Base addr.: %04x\n", vt_id, vt_rev, vt_base);
-  printf("==============================================\n");
+  debugf("VT1211 ID: %02X, Revision: %02X, Base addr.: %04x\n", vt_id, vt_rev, vt_base);
+  debugf("==============================================\n");
 
-  /* declare variables we'll be using */
+  return EXIT_SUCCESS;
+}
+
+int main(int argc, char **argv) {
+  params_init(argc, argv);
+
+  if (vt1211_init() != EXIT_SUCCESS) {
+    return EXIT_FAILURE;
+  }
+
   resmgr_attr_t        resmgr_attr;
   dispatch_t           *dpp;
   dispatch_context_t   *ctp;
   int                  id;
 
-    /* initialize dispatch interface */
   if((dpp = dispatch_create()) == NULL) {
     fprintf(stderr, "%s: Unable to allocate dispatch handle.\n", argv[0]);
     return EXIT_FAILURE;
   }
 
-  /* initialize resource manager attributes */
   memset(&resmgr_attr, 0, sizeof resmgr_attr);
   resmgr_attr.nparts_max      = 1;
   resmgr_attr.msg_max_size    = 1024;
 
-  /* initialize functions for handling messages */    
   iofunc_func_init(_RESMGR_CONNECT_NFUNCS, &connect_funcs, _RESMGR_IO_NFUNCS, &io_funcs);
-
-  /* initialize attribute structure used by the device */
   iofunc_attr_init(&attr, S_IFNAM | 0666, 0, 0);
-  //io_funcs.write  = vt1211_write;
-  //io_funcs.read   = vt1211_read;
+
   io_funcs.devctl = io_devctl;
 
-    /* attach our device name */
   id = resmgr_attach(
             dpp,            /* dispatch handle        */
             &resmgr_attr,   /* resource manager attrs */
@@ -217,10 +277,8 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-    /* allocate a context structure */
   ctp = dispatch_context_alloc(dpp);
 
-    /* start the resource manager message loop */
   while(1) {
     if((ctp = dispatch_block(ctp)) == NULL) {
       fprintf(stderr, "block error\n");

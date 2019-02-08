@@ -3,20 +3,20 @@
  *
  * Copyright 2019 by Roman Serov <roman@serov.co>
  * 
- * This file is part of VT1211 GPIO Userspace library.
+ * This file is part of VT1211 GPIO Resource manager.
  *
- * VT1211 GPIO Userspace library is free software: you can redistribute it and/or modify
+ * VT1211 GPIO Resource manager is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  * 
- * VT1211 GPIO Userspace library is distributed in the hope that it will be useful,
+ * VT1211 GPIO Resource manager is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  * 
  * You should have received a copy of the GNU General Public License
- * along with VT1211 GPIO Userspace library. If not, see <http://www.gnu.org/licenses/>.
+ * along with VT1211 GPIO Resource manager. If not, see <http://www.gnu.org/licenses/>.
  * 
  * @license GPL-3.0+ <http://spdx.org/licenses/GPL-3.0+>
 */
@@ -40,6 +40,15 @@
 
 #define VT1211_PORT_INPUT   0x00
 #define VT1211_PORT_OUTPUT  0xFF
+
+#define VT1211_PIN_0        (0x1)
+#define VT1211_PIN_1        (0x1 << 1)
+#define VT1211_PIN_2        (0x1 << 2)
+#define VT1211_PIN_3        (0x1 << 3)
+#define VT1211_PIN_4        (0x1 << 4)
+#define VT1211_PIN_5        (0x1 << 5)
+#define VT1211_PIN_6        (0x1 << 6)
+#define VT1211_PIN_7        (0x1 << 7)
 
 #define VT1211_PIN_INPUT    0x1
 #define VT1211_PIN_OUTPUT   0x0

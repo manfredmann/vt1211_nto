@@ -25,8 +25,13 @@
 %C - driver for the VT1211 Super I/O chip
 
 Options:
- -i   CIR   Configuration Index Register (hex). Default is 0x002E
- -d   CDR   Configuration Data Register (hex).  Default is 0x002F
- -p36 Ports 3..6 enable
+ -i   CIR Configuration Index Register (hex). Default is 0x002E
+ -d   CDR Configuration Data Register (hex).  Default is 0x002F
+ -p   Ports 3..6 enable
  -v   Verbose
+
+Examples:
+%C -p
+%C -p -v
+%C -p -v -i 0x002E -d 0x002F
 #endif
