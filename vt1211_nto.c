@@ -37,8 +37,8 @@
 typedef struct {
   uint16_t cir;
   uint16_t cdr;
-  uint8_t ports36;
-  uint8_t verbose;
+  uint8_t  ports36;
+  uint8_t  verbose;
 } params_t;
 
 static params_t                   params;
@@ -74,8 +74,13 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
     case VT1211_GET_INFO: {
       debugf("Action: info\n");
       gpio_portinfo_t *port_info = (gpio_portinfo_t *)data;
-      port_info->count = 1;
- 
+
+      if (params.ports36) {
+        port_info->count = 5;
+      } else {
+        port_info->count = 1;
+      }
+
       nbytes = sizeof(gpio_portinfo_t);
       rc = EOK;
       break;
