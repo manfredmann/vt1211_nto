@@ -169,11 +169,11 @@ void params_init(int argc, char **argv) {
   while( opt != -1 ) {
     switch( opt ) {
       case 'i': {
-        params.cir = (int)strtol(optarg, NULL, 16);
+        params.cir = (uint16_t) strtol(optarg, NULL, 16);
         break;
       }
       case 'd': {
-        params.cdr = (int)strtol(optarg, NULL, 16);
+        params.cdr = (uint16_t) strtol(optarg, NULL, 16);
         break;
       }
       case 'p': {
