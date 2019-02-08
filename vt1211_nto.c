@@ -203,15 +203,16 @@ int vt1211_init() {
   } else {
     debugf("OK\n");
   }
-
+  debugf("CIR:\t\t\t0x%04X\n", params.cir);
+  debugf("CDR:\t\t\t0x%04X\n", params.cdr);
   debugf("VT1211 Init:\t\t");
 
   int r;
 
   if (params.ports36) {
-    r = vt_init(VT_CONFIG_PORT_1 | VT_CONFIG_PORT_3_6);
+    r = vt_init(VT_CONFIG_PORT_1 | VT_CONFIG_PORT_3_6, params.cir, params.cdr);
   } else {
-    r = vt_init(VT_CONFIG_PORT_1);
+    r = vt_init(VT_CONFIG_PORT_1, params.cir, params.cdr);
   }
 
   switch (r) {
