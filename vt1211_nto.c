@@ -209,7 +209,7 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
                 debugf("OK\n");
                 rc = EOK;
               } else {
-                debugf("Allready free\n");
+                debugf("Already free\n");
               }
             } else {
               debugf("Only owner can free pin\n"); 
@@ -242,7 +242,7 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
             debugf("OK\n");
             rc = EOK;
           } else {
-            debugf("Allready free\n");
+            debugf("Already free\n");
           }
         } else {
           debugf("Only owner can free port\n");
@@ -441,7 +441,7 @@ int vt1211_init() {
   ports_status  = hashmap_create();
 
   gpio_port_status_t *port_status = malloc(sizeof(gpio_port_status_t));
-  uint8_t     port_id   = VT_PORT_1;   
+  uint8_t     port_id   = VT1211_PORT_1;   
   struct hkey port_key  = {&port_id, sizeof(port_id)};
 
   port_status->busy = false;
@@ -480,12 +480,6 @@ int main(int argc, char **argv) {
   if (vt1211_init() != EXIT_SUCCESS) {
     return EXIT_FAILURE;
   }
-
-  /*if (params.ports36) {
-    ports = malloc(sizeof(port_t) * VT_CONFIG_PORT_1);
-  } else {
-    ports = malloc(sizeof(port_t) * (VT_CONFIG_PORT_1 + VT_CONFIG_PORT_3_6));
-  }*/
 
   resmgr_attr_t        resmgr_attr;
   dispatch_t           *dpp;
