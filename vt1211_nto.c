@@ -90,7 +90,7 @@ bool vt1211_pin_check_perm(pid_t pid, gpio_data_t *port_data) {
       
   if (!port_status->busy) {
     uint8_t     pin_id  = port_data->pin;
-    struct hkey pin_key  = {&pin_id, sizeof(pin_id)};
+    struct hkey pin_key = {&pin_id, sizeof(pin_id)};
 
     gpio_pin_status_t *pin_status = hashmap_get(port_status->pins, &pin_key);
 
