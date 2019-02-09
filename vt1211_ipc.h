@@ -31,6 +31,10 @@
 #define VT1211_CONFIG_PORT  __DIOT  (_DCMD_MISC, 0x200704, gpio_data_t) 
 #define VT1211_SET_PORT     __DIOT  (_DCMD_MISC, 0x200705, gpio_data_t) 
 #define VT1211_GET_PORT     __DIOTF (_DCMD_MISC, 0x200706, gpio_data_t) 
+#define VT1211_REQ_PORT     __DIOTF (_DCMD_MISC, 0x200707, gpio_data_t) 
+#define VT1211_REQ_PIN      __DIOTF (_DCMD_MISC, 0x200708, gpio_data_t)
+#define VT1211_FREE_PORT    __DIOTF (_DCMD_MISC, 0x200709, gpio_data_t)
+#define VT1211_FREE_PIN     __DIOTF (_DCMD_MISC, 0x20070A, gpio_data_t)
 
 #define VT1211_PORT_1       0x00 //GP10...GP17
 #define VT1211_PORT_3       0x01 //GP30...GP37

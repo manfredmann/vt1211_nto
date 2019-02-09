@@ -33,6 +33,7 @@
 #include <sys/dispatch.h>
 #include "vt1211_ipc.h"
 #include "vt1211_gpio/src/vt1211_gpio.h"
+#include "libds/src/hashmap.h"
 
 typedef struct {
   uint16_t cir;
@@ -41,11 +42,23 @@ typedef struct {
   uint8_t  verbose;
 } params_t;
 
+typedef struct {
+  bool  busy;
+  pid_t pid;
+} gpio_pin_status_t;
+
+typedef struct {
+  bool            busy;
+  pid_t           pid;
+  struct hashmap  *pins;
+} gpio_port_status_t;
+
 static params_t                   params;
 static const char*                params_str = "i:d:pv";
 static resmgr_connect_funcs_t     connect_funcs;
 static resmgr_io_funcs_t          io_funcs;
 static iofunc_attr_t              attr;
+static struct hashmap             *ports_status;
 
 static void debugf(const char *format, ... ) {
   if (params.verbose) {
@@ -56,24 +69,61 @@ static void debugf(const char *format, ... ) {
   }
 }
 
+bool vt1211_port_check_perm(pid_t pid, gpio_data_t *port_data) {
+  uint8_t     port_id   = port_data->port;   
+  struct hkey port_key  = {&port_id, sizeof(port_id)};
+
+  gpio_port_status_t *port_status = hashmap_get(ports_status, &port_key);
+      
+  if (port_status->busy && port_status->pid == pid) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+bool vt1211_pin_check_perm(pid_t pid, gpio_data_t *port_data) {
+  uint8_t     port_id   = port_data->port;   
+  struct hkey port_key  = {&port_id, sizeof(port_id)};
+
+  gpio_port_status_t *port_status = hashmap_get(ports_status, &port_key);
+      
+  if (!port_status->busy) {
+    uint8_t     pin_id  = port_data->pin;
+    struct hkey pin_key  = {&pin_id, sizeof(pin_id)};
+
+    gpio_pin_status_t *pin_status = hashmap_get(port_status->pins, &pin_key);
+
+    if (pin_status->busy && pin_status->pid == pid) {
+      return true;
+    } else {
+      return false;
+    }
+  } else {
+    return false;
+  }
+}
+
 int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
-  int   rc;
-  int   nbytes;
-  void* data;
-
-  data   = _DEVCTL_DATA (msg->i);
-  nbytes = 0;
-  rc     = ENOSYS;
-
+  int             rc;
+  int             nbytes;
+  void            *data;
+  pid_t           pid;
   gpio_portinfo_t *port_info;
   gpio_data_t     *port_data;
 
-  debugf("dcmd: %0X\n", msg->i.dcmd);
+  data      = _DEVCTL_DATA (msg->i);
+  nbytes    = 0;
+  rc        = ENOSYS;
+  pid       = ctp->info.pid;
+  port_data = (gpio_data_t *) data;
+
+  debugf("dcmd: %0X from pid: %d\n", msg->i.dcmd, pid);
 
   switch (msg->i.dcmd) {
     case VT1211_GET_INFO: {
       debugf("Action: info\n");
-      gpio_portinfo_t *port_info = (gpio_portinfo_t *)data;
+      gpio_portinfo_t *port_info = (gpio_portinfo_t *) data;
 
       if (params.ports36) {
         port_info->count = 5;
@@ -85,60 +135,205 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
       rc = EOK;
       break;
     }
-    case VT1211_CONFIG_PIN: {
-      port_data = (gpio_data_t *)data;
+    case VT1211_REQ_PORT: {
+      uint8_t     port_id   = port_data->port;   
+      struct hkey port_key  = {&port_id, sizeof(port_id)};
       
-      vt_pin_mode(port_data->port, port_data->pin, port_data->data);
-      debugf("Action: config pin. Port: %d, Pin: %d\n", port_data->port, port_data->pin);
+      gpio_port_status_t *port_status = hashmap_get(ports_status, &port_key);
 
-      rc = EOK;
+      debugf("Port %d request. Status: ", port_data->port);
+
+      if (port_status != NULL) {
+        if (!port_status->busy) {
+          port_status->busy = true;
+          port_status->pid  = pid;
+
+          debugf("OK\n");
+          rc = EOK;
+        } else {
+          debugf("Busy by pid %d\n", port_status->pid);
+        }
+      }
+
       break;
     }
-    case VT1211_SET_PIN: {
-      port_data = (gpio_data_t *)data;
-      
-      vt_pin_set(port_data->port, port_data->pin, port_data->data);
-      debugf("Action: set pin. Port: %d, Pin: %d\n", port_data->port, port_data->pin);
+    case VT1211_REQ_PIN: {
+      uint8_t     port_id   = port_data->port;   
+      struct hkey port_key  = {&port_id, sizeof(port_id)};
 
-      rc = EOK;
+      debugf("Port %d pin %d request. Status: ", port_data->port, port_data->pin);
+
+      gpio_port_status_t *port_status = hashmap_get(ports_status, &port_key);
+      if (!port_status->busy) {
+        uint8_t     pin_id  = port_data->pin;
+        struct hkey pin_key  = {&pin_id, sizeof(pin_id)};
+
+        gpio_pin_status_t *pin_status = hashmap_get(port_status->pins, &pin_key);
+
+        if (pin_status != NULL) {
+          if (!pin_status->busy) {
+            pin_status->busy = true;
+            pin_status->pid  = pid;
+
+            debugf("OK\n");
+            rc = EOK;
+          } else {
+            debugf("Busy\n");
+          }
+        }
+      }
+      break;
+    }
+    case VT1211_FREE_PIN: {
+      uint8_t     port_id   = port_data->port;   
+      struct hkey port_key  = {&port_id, sizeof(port_id)};
+
+      gpio_port_status_t *port_status = hashmap_get(ports_status, &port_key);
+
+      debugf("Port %d pin %d free request. Status: ", port_data->port, port_data->pin);
+
+      if (port_status != NULL) {
+        if (!port_status->busy) {
+          uint8_t     pin_id  = port_data->pin;
+          struct hkey pin_key  = {&pin_id, sizeof(pin_id)};
+
+          gpio_pin_status_t *pin_status = hashmap_get(port_status->pins, &pin_key);
+
+          if (pin_status != NULL) {
+            if (pin_status->pid == pid) {
+              if (pin_status->busy) {
+
+                pin_status->busy = false;
+                pin_status->pid  = NULL;
+
+                debugf("OK\n");
+                rc = EOK;
+              } else {
+                debugf("Allready free\n");
+              }
+            } else {
+              debugf("Only owner can free pin\n"); 
+            }            
+          } else {
+            debugf("Incorrect pin\n");
+          }
+        } else {
+          debugf("Port is busy\n");
+        }
+      } else {
+        debugf("Incorrect port\n");
+      }
+      break;
+    }
+    case VT1211_FREE_PORT: {
+      uint8_t     port_id   = port_data->port;   
+      struct hkey port_key  = {&port_id, sizeof(port_id)};
+
+      gpio_port_status_t *port_status = hashmap_get(ports_status, &port_key);
+
+      debugf("Port %d free request. Status: ", port_data->port);
+
+      if (port_status != NULL) {
+        if (port_status->pid == pid) {
+          if (port_status->busy) {        
+            port_status->busy = false;
+            port_status->pid  = NULL;
+
+            debugf("OK\n");
+            rc = EOK;
+          } else {
+            debugf("Allready free\n");
+          }
+        } else {
+          debugf("Only owner can free port\n");
+        }
+      } else {
+        debugf("Incorrect port\n");
+      }
+      break;
+    }
+    case VT1211_CONFIG_PIN: {
+      debugf("Config port %d pin %d: ", port_data->port, port_data->pin);
+
+      if (vt1211_pin_check_perm(pid, port_data)) {
+        vt_pin_mode(port_data->port, port_data->pin, port_data->data);
+
+        debugf("OK\n");
+        rc = EOK;
+      } else {
+        debugf("Permission denied\n");
+      }
+
+      break;
+    }
+    case VT1211_SET_PIN: { 
+      debugf("Set port %d pin %d data %02X: ", port_data->port, port_data->pin, port_data->data);
+
+      if (vt1211_pin_check_perm(pid, port_data)) {
+        vt_pin_set(port_data->port, port_data->pin, port_data->data);
+
+        debugf("OK\n");
+        rc = EOK;
+      } else {
+        debugf("Permission denied\n");
+      }
+
       break;
     }
     case VT1211_GET_PIN: {
-      port_data = (gpio_data_t *)data;
-      
-      port_data->data = vt_pin_get(port_data->port, port_data->pin);
-      debugf("Action: get pin. Port: %d, Pin: %d\n", port_data->port, port_data->pin);
+      debugf("Get port %d pin %d: ", port_data->port, port_data->pin);
 
-      nbytes = sizeof(gpio_data_t);
-      rc = EOK;
+      if (vt1211_pin_check_perm(pid, port_data)) {
+        port_data->data = vt_pin_get(port_data->port, port_data->pin);
+
+        debugf("OK. Data: %02X\n", port_data->data);
+        nbytes = sizeof(gpio_data_t);
+        rc = EOK;
+      } else {
+        debugf("Permission denied\n");
+      }
+
       break;
     }
     case VT1211_CONFIG_PORT: {
-      port_data = (gpio_data_t *)data;
+      debugf("Config port %d: ", port_data->port);
 
-      vt_port_mode(port_data->port, port_data->data);
-      debugf("Action: config port. Port: %d", port_data->port);
+      if (vt1211_port_check_perm(pid, port_data)) {
+        vt_port_mode(port_data->port, port_data->data);
 
-      rc = EOK;
+        debugf("OK\n");
+        rc = EOK;
+      } else {
+        debugf("Permission denied\n");
+      }
       break;
     }
     case VT1211_SET_PORT: {
-      port_data = (gpio_data_t *)data;
-      
-      vt_port_write(port_data->port, port_data->data);
-      debugf("Action: set port. Port: %d Data: %02X\n", port_data->port, port_data->data);
+      debugf("Set port %d Data %02X: ", port_data->port, port_data->data);
 
-      rc = EOK;
+      if (vt1211_port_check_perm(pid, port_data)) {
+        vt_port_write(port_data->port, port_data->data);
+
+        debugf("OK\n");
+        rc = EOK;
+      } else {
+        debugf("Permission denied\n");
+      }
       break;
     }
     case VT1211_GET_PORT: {
-      port_data = (gpio_data_t *)data;
+      debugf("Get port %d: ", port_data->port);
 
-      port_data->data = vt_port_read(port_data->port);
-      debugf("Action: get port. Port: %d", port_data->port);
+      if (vt1211_port_check_perm(pid, port_data)) {
+        port_data->data = vt_port_read(port_data->port);
+ 
+        debugf("OK. Data: %02X\n", port_data->data);
 
-      nbytes = sizeof(gpio_data_t);
-      rc = EOK;
+        nbytes = sizeof(gpio_data_t);
+        rc = EOK;
+      } else {
+        debugf("Permission denied\n");        
+      }
       break;
     }
     default: {
@@ -232,6 +427,43 @@ int vt1211_init() {
     }
   }
 
+  uint8_t pins[8] = {
+    VT1211_PIN_0,
+    VT1211_PIN_1,
+    VT1211_PIN_2,
+    VT1211_PIN_3,
+    VT1211_PIN_4,
+    VT1211_PIN_5,
+    VT1211_PIN_6,
+    VT1211_PIN_7,      
+  };
+
+  ports_status  = hashmap_create();
+
+  gpio_port_status_t *port_status = malloc(sizeof(gpio_port_status_t));
+  uint8_t     port_id   = VT_PORT_1;   
+  struct hkey port_key  = {&port_id, sizeof(port_id)};
+
+  port_status->busy = false;
+  port_status->pid  = NULL;
+  port_status->pins = hashmap_create();
+
+  for (int i = 0; i < 8; ++i) {
+    uint8_t           pin_id   = pins[i];      
+    struct hkey       pin_key  = {&pin_id, sizeof(pin_id)};
+    gpio_pin_status_t *pin     = malloc(sizeof(gpio_pin_status_t));
+    pin->busy = false;
+    pin->pid  = NULL;
+
+    hashmap_set(port_status->pins, &pin_key, pin);  
+  }
+
+  hashmap_set(ports_status, &port_key, port_status);
+
+  if (params.ports36) {
+    //
+  } 
+
   uint8_t   vt_id    = vt_get_dev_id();
   uint8_t   vt_rev   = vt_get_dev_rev();
   uint16_t  vt_base  = vt_get_baddr();
@@ -248,6 +480,12 @@ int main(int argc, char **argv) {
   if (vt1211_init() != EXIT_SUCCESS) {
     return EXIT_FAILURE;
   }
+
+  /*if (params.ports36) {
+    ports = malloc(sizeof(port_t) * VT_CONFIG_PORT_1);
+  } else {
+    ports = malloc(sizeof(port_t) * (VT_CONFIG_PORT_1 + VT_CONFIG_PORT_3_6));
+  }*/
 
   resmgr_attr_t        resmgr_attr;
   dispatch_t           *dpp;

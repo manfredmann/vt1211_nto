@@ -1,5 +1,5 @@
 TARGET = vt1211_nto
-SRCS = vt1211_nto.c vt1211_gpio/src/vt1211_gpio.c
+SRCS = vt1211_nto.c vt1211_gpio/src/vt1211_gpio.c libds/src/iterator.c libds/src/hashmap.c 
 OBJS = $(SRCS:.c=.o)
 CC = gcc
 CFLAGS = -std=gnu99 -O2

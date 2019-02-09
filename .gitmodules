@@ -1,3 +1,6 @@
 [submodule "vt1211_gpio"]
 	path = vt1211_gpio
 	url = git@github.com:manfredmann/vt1211_gpio.git
+[submodule "libds"]
+	path = libds
+	url = https://github.com/dgraham/libds.git
