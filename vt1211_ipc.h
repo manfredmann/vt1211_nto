@@ -36,6 +36,15 @@
 #define VT1211_FREE_PORT    __DIOTF (_DCMD_MISC, 0x200709, gpio_data_t)
 #define VT1211_FREE_PIN     __DIOTF (_DCMD_MISC, 0x20070A, gpio_data_t)
 
+// Errors 
+
+#define VT1211_ERR_INCRCT_PORT    0x200710
+#define VT1211_ERR_INCRCT_PIN     0x200711
+#define VT1211_ERR_PORT_BUSY      0x200712
+#define VT1211_ERR_PIN_BUSY       0x200713
+#define VT1211_ERR_PERM           0x200714
+#define VT1211_ERR_ALREADY        0x200715
+
 #define VT1211_PORT_1       0x00 //GP10...GP17
 #define VT1211_PORT_3       0x01 //GP30...GP37
 #define VT1211_PORT_4       0x02 //GP40...GP47
