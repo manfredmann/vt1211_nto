@@ -24,7 +24,7 @@
 #include <sys/types.h>
 #include <stdint.h>
 
-#define VT1211_GET_INFO     __DIOTF (_DCMD_MISC, 0x200700, gpio_portinfo_t) 
+#define VT1211_GET_INFO     __DIOTF (_DCMD_MISC, 0x200700, gpio_portsinfo_t) 
 #define VT1211_CONFIG_PIN   __DIOT  (_DCMD_MISC, 0x200701, gpio_data_t) 
 #define VT1211_SET_PIN      __DIOT  (_DCMD_MISC, 0x200702, gpio_data_t) 
 #define VT1211_GET_PIN      __DIOTF (_DCMD_MISC, 0x200703, gpio_data_t) 
@@ -59,7 +59,8 @@
 
 typedef struct {
   uint8_t count;
-} gpio_portinfo_t;
+  uint8_t pins_by_port[5];
+} gpio_portsinfo_t;
 
 typedef struct {
   uint8_t port;

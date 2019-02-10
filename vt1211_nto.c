@@ -59,6 +59,7 @@ static resmgr_connect_funcs_t     connect_funcs;
 static resmgr_io_funcs_t          io_funcs;
 static iofunc_attr_t              attr;
 static struct hashmap             *ports_status;
+static gpio_portsinfo_t           ports_info;
 
 static void debugf(const char *format, ... ) {
   if (params.verbose) {
@@ -109,7 +110,6 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
   int             nbytes;
   void            *data;
   pid_t           pid;
-  gpio_portinfo_t *port_info;
   gpio_data_t     *port_data;
 
   data      = _DEVCTL_DATA (msg->i);
@@ -123,15 +123,11 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
   switch (msg->i.dcmd) {
     case VT1211_GET_INFO: {
       debugf("Action: info\n");
-      gpio_portinfo_t *port_info = (gpio_portinfo_t *) data;
+      gpio_portsinfo_t *info = (gpio_portsinfo_t *) data;
 
-      if (params.ports36) {
-        port_info->count = 5;
-      } else {
-        port_info->count = 1;
-      }
+      memcpy(info, &ports_info, sizeof(gpio_portsinfo_t));
 
-      nbytes = sizeof(gpio_portinfo_t);
+      nbytes = sizeof(gpio_portsinfo_t);
       rc = EOK;
       break;
     }
@@ -427,6 +423,7 @@ int vt1211_init() {
     }
   }
 
+
   uint8_t pins[8] = {
     VT1211_PIN_0,
     VT1211_PIN_1,
@@ -438,31 +435,41 @@ int vt1211_init() {
     VT1211_PIN_7,      
   };
 
-  ports_status  = hashmap_create();
-
-  gpio_port_status_t *port_status = malloc(sizeof(gpio_port_status_t));
-  uint8_t     port_id   = VT1211_PORT_1;   
-  struct hkey port_key  = {&port_id, sizeof(port_id)};
-
-  port_status->busy = false;
-  port_status->pid  = NULL;
-  port_status->pins = hashmap_create();
-
-  for (int i = 0; i < 8; ++i) {
-    uint8_t           pin_id   = pins[i];      
-    struct hkey       pin_key  = {&pin_id, sizeof(pin_id)};
-    gpio_pin_status_t *pin     = malloc(sizeof(gpio_pin_status_t));
-    pin->busy = false;
-    pin->pid  = NULL;
-
-    hashmap_set(port_status->pins, &pin_key, pin);  
-  }
-
-  hashmap_set(ports_status, &port_key, port_status);
+  ports_info.count = 1;
+  ports_info.pins_by_port[VT1211_PORT_1] = 8;
+  ports_info.pins_by_port[VT1211_PORT_3] = 8;
+  ports_info.pins_by_port[VT1211_PORT_4] = 8;
+  ports_info.pins_by_port[VT1211_PORT_5] = 8;
+  ports_info.pins_by_port[VT1211_PORT_6] = 3;
 
   if (params.ports36) {
-    //
-  } 
+    ports_info.count = 5;
+  }
+
+  ports_status  = hashmap_create();
+
+  for (int port = 0; port < ports_info.count; ++port) {
+
+    gpio_port_status_t *port_status = malloc(sizeof(gpio_port_status_t));
+    uint8_t     port_id   = port;   
+    struct hkey port_key  = {&port_id, sizeof(port_id)};
+
+    port_status->busy = false;
+    port_status->pid  = NULL;
+    port_status->pins = hashmap_create();
+
+    for (int i = 0; i < ports_info.pins_by_port[port]; ++i) {
+      uint8_t           pin_id   = pins[i];      
+      struct hkey       pin_key  = {&pin_id, sizeof(pin_id)};
+      gpio_pin_status_t *pin     = malloc(sizeof(gpio_pin_status_t));
+      pin->busy = false;
+      pin->pid  = NULL;
+
+      hashmap_set(port_status->pins, &pin_key, pin);  
+    }
+
+    hashmap_set(ports_status, &port_key, port_status);
+  }
 
   uint8_t   vt_id    = vt_get_dev_id();
   uint8_t   vt_rev   = vt_get_dev_rev();
