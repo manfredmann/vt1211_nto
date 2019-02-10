@@ -77,7 +77,7 @@ bool vt1211_port_check(gpio_data_t *port_data) {
   return hashmap_contains(ports_status, &port_key);
 }
 
-bool vt1211_port_check_perm1(pid_t pid, gpio_data_t *port_data) {
+bool vt1211_port_check_perm(pid_t pid, gpio_data_t *port_data) {
   uint8_t     port_id   = port_data->port;
   struct hkey port_key  = {&port_id, sizeof(port_id)};
 
@@ -107,42 +107,56 @@ void vt1211_port_set_busy(pid_t pid, gpio_data_t *port_data, bool busy) {
   port_status->busy = busy;
 }
 
-
-
-
-
-
-
-bool vt1211_port_check_perm(pid_t pid, gpio_data_t *port_data) {
-  uint8_t     port_id   = port_data->port;   
+bool vt1211_pin_check(gpio_data_t *port_data) {
+  uint8_t     port_id   = port_data->port;
   struct hkey port_key  = {&port_id, sizeof(port_id)};
 
+  uint8_t     pin_id  = port_data->pin;
+  struct hkey pin_key = {&pin_id, sizeof(pin_id)};
+
   gpio_port_status_t *port_status = hashmap_get(ports_status, &port_key);
-      
-  if (port_status->busy && port_status->pid == pid) {
-    return true;
-  } else {
-    return false;
-  }
+
+  return hashmap_contains(port_status->pins, &pin_key);
+}
+
+bool vt1211_pin_is_busy(gpio_data_t *port_data) {
+  uint8_t     port_id   = port_data->port;
+  struct hkey port_key  = {&port_id, sizeof(port_id)};
+
+  uint8_t     pin_id  = port_data->pin;
+  struct hkey pin_key = {&pin_id, sizeof(pin_id)};
+
+  gpio_port_status_t *port_status = hashmap_get(ports_status, &port_key);
+  gpio_pin_status_t  *pin_status  = hashmap_get(port_status->pins, &pin_key);
+  return pin_status->busy;
+}
+
+void vt1211_pin_set_busy(pid_t pid, gpio_data_t *port_data, bool busy) {
+  uint8_t     port_id   = port_data->port;
+  struct hkey port_key  = {&port_id, sizeof(port_id)};
+
+  uint8_t     pin_id  = port_data->pin;
+  struct hkey pin_key = {&pin_id, sizeof(pin_id)};
+
+  gpio_port_status_t *port_status = hashmap_get(ports_status, &port_key);
+  gpio_pin_status_t  *pin_status  = hashmap_get(port_status->pins, &pin_key);
+
+  pin_status->pid  = pid;
+  pin_status->busy = busy;
 }
 
 bool vt1211_pin_check_perm(pid_t pid, gpio_data_t *port_data) {
-  uint8_t     port_id   = port_data->port;   
+  uint8_t     port_id   = port_data->port;
   struct hkey port_key  = {&port_id, sizeof(port_id)};
 
+  uint8_t     pin_id  = port_data->pin;
+  struct hkey pin_key = {&pin_id, sizeof(pin_id)};
+
   gpio_port_status_t *port_status = hashmap_get(ports_status, &port_key);
-      
-  if (!port_status->busy) {
-    uint8_t     pin_id  = port_data->pin;
-    struct hkey pin_key = {&pin_id, sizeof(pin_id)};
+  gpio_pin_status_t  *pin_status  = hashmap_get(port_status->pins, &pin_key);
 
-    gpio_pin_status_t *pin_status = hashmap_get(port_status->pins, &pin_key);
-
-    if (pin_status->busy && pin_status->pid == pid) {
-      return true;
-    } else {
-      return false;
-    }
+  if (pin_status->pid == pid) {
+    return true;
   } else {
     return false;
   }
@@ -175,129 +189,151 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
       break;
     }
     case VT1211_REQ_PIN: {
-      uint8_t     port_id   = port_data->port;   
-      struct hkey port_key  = {&port_id, sizeof(port_id)};
-
       debugf("Port %d pin %d request. Status: ", port_data->port, port_data->pin);
 
-      gpio_port_status_t *port_status = hashmap_get(ports_status, &port_key);
-      if (!port_status->busy) {
-        uint8_t     pin_id  = port_data->pin;
-        struct hkey pin_key  = {&pin_id, sizeof(pin_id)};
+      if (!vt1211_port_check(port_data)) {
+        debugf("Incorrect port\n");
+        rc = VT1211_ERR_INCRCT_PORT;
+        break;
+      }
 
-        gpio_pin_status_t *pin_status = hashmap_get(port_status->pins, &pin_key);
+      if (!vt1211_pin_check(port_data)) {
+        debugf("Incorrect pin\n");
+        rc = VT1211_ERR_INCRCT_PIN;
+        break;
+      }
 
-        if (pin_status != NULL) {
-          if (!pin_status->busy) {
-            pin_status->busy = true;
-            pin_status->pid  = pid;
-
-            debugf("OK\n");
-            rc = EOK;
-          } else {
-            debugf("Pin is busy\n");
-            rc = VT1211_ERR_PIN_BUSY;
-          }
-        } else {
-          debugf("Incorrect pin\n");
-          rc = VT1211_ERR_INCRCT_PIN;
-        }
-      } else {
+      if (vt1211_port_is_busy(port_data)) {
         debugf("Port is busy\n");
         rc = VT1211_ERR_PORT_BUSY;
+        break;
       }
+
+      if (vt1211_pin_is_busy(port_data)) {
+        debugf("Pin is busy\n");
+        rc = VT1211_ERR_PIN_BUSY;
+        break;
+      }
+
+      vt1211_pin_set_busy(pid, port_data, true);
+
+      debugf("OK\n");
+      rc = EOK;
       break;
     }
     case VT1211_FREE_PIN: {
-      uint8_t     port_id   = port_data->port;   
-      struct hkey port_key  = {&port_id, sizeof(port_id)};
-
-      gpio_port_status_t *port_status = hashmap_get(ports_status, &port_key);
-
       debugf("Port %d pin %d free request. Status: ", port_data->port, port_data->pin);
-
-      if (port_status != NULL) {
-        if (!port_status->busy) {
-          uint8_t     pin_id  = port_data->pin;
-          struct hkey pin_key  = {&pin_id, sizeof(pin_id)};
-
-          gpio_pin_status_t *pin_status = hashmap_get(port_status->pins, &pin_key);
-
-          if (pin_status != NULL) {
-            if (pin_status->pid == pid) {
-              if (pin_status->busy) {
-
-                pin_status->busy = false;
-                pin_status->pid  = NULL;
-
-                debugf("OK\n");
-                rc = EOK;
-              } else {
-                debugf("Already free\n");
-                rc = VT1211_ERR_ALREADY;
-              }
-            } else {
-              debugf("Only owner can free pin\n"); 
-              rc = VT1211_ERR_PERM;
-            }            
-          } else {
-            debugf("Incorrect pin\n");
-            rc = VT1211_ERR_INCRCT_PIN;
-          }
-        } else {
-          debugf("Port is busy\n");
-          rc = VT1211_ERR_PORT_BUSY;
-        }
-      } else {
+      
+      if (!vt1211_port_check(port_data)) {
         debugf("Incorrect port\n");
         rc = VT1211_ERR_INCRCT_PORT;
+        break;
       }
+
+      if (!vt1211_pin_check(port_data)) {
+        debugf("Incorrect pin\n");
+        rc = VT1211_ERR_INCRCT_PIN;
+        break;
+      }
+
+      if (!vt1211_pin_check_perm(pid, port_data)) {
+        debugf("Only owner can free pin\n"); 
+        rc = VT1211_ERR_PERM;
+        break;
+      }
+
+      if (!vt1211_pin_is_busy(port_data)) {
+        debugf("Already free\n");
+        rc = VT1211_ERR_ALREADY;
+        break;
+      }
+
+      vt1211_pin_set_busy(pid, port_data, false);
+
+      debugf("OK\n");
+      rc = EOK;
       break;
     }
     case VT1211_CONFIG_PIN: {
       debugf("Config port %d pin %d: ", port_data->port, port_data->pin);
 
-      if (vt1211_pin_check_perm(pid, port_data)) {
-        vt_pin_mode(port_data->port, port_data->pin, port_data->data);
-
-        debugf("OK\n");
-        rc = EOK;
-      } else {
-        debugf("Only owner can configure pin\n");
-        rc = VT1211_ERR_PERM;
+      if (!vt1211_port_check(port_data)) {
+        debugf("Incorrect port\n");
+        rc = VT1211_ERR_INCRCT_PORT;
+        break;
       }
 
+      if (!vt1211_pin_check(port_data)) {
+        debugf("Incorrect pin\n");
+        rc = VT1211_ERR_INCRCT_PIN;
+        break;
+      }
+
+      if (!vt1211_pin_check_perm(pid, port_data) && vt1211_pin_is_busy(port_data)) {
+        debugf("Only owner can configure pin\n"); 
+        rc = VT1211_ERR_PERM;
+        break;
+      }
+
+      vt_pin_mode(port_data->port, port_data->pin, port_data->data);
+
+      debugf("OK\n");
+      rc = EOK;
       break;
     }
     case VT1211_SET_PIN: { 
       debugf("Set port %d pin %d data %02X: ", port_data->port, port_data->pin, port_data->data);
 
-      if (vt1211_pin_check_perm(pid, port_data)) {
-        vt_pin_set(port_data->port, port_data->pin, port_data->data);
-
-        debugf("OK\n");
-        rc = EOK;
-      } else {
-        debugf("Only owner can set pin\n");
-        rc = VT1211_ERR_PERM;
+      if (!vt1211_port_check(port_data)) {
+        debugf("Incorrect port\n");
+        rc = VT1211_ERR_INCRCT_PORT;
+        break;
       }
 
+      if (!vt1211_pin_check(port_data)) {
+        debugf("Incorrect pin\n");
+        rc = VT1211_ERR_INCRCT_PIN;
+        break;
+      }
+
+      if (!vt1211_pin_check_perm(pid, port_data) && vt1211_pin_is_busy(port_data)) {
+        debugf("Only owner can set pin\n"); 
+        rc = VT1211_ERR_PERM;
+        break;
+      }
+
+      vt_pin_set(port_data->port, port_data->pin, port_data->data);
+
+      debugf("OK\n");
+      rc = EOK;
       break;
     }
     case VT1211_GET_PIN: {
       debugf("Get port %d pin %d: ", port_data->port, port_data->pin);
 
-      if (vt1211_pin_check_perm(pid, port_data)) {
-        port_data->data = vt_pin_get(port_data->port, port_data->pin);
-
-        debugf("OK. Data: %02X\n", port_data->data);
-        nbytes = sizeof(gpio_data_t);
-        rc = EOK;
-      } else {
-        debugf("Only owner can get pin\n");
-        rc = VT1211_ERR_PERM;
+      if (!vt1211_port_check(port_data)) {
+        debugf("Incorrect port\n");
+        rc = VT1211_ERR_INCRCT_PORT;
+        break;
       }
 
+      if (!vt1211_pin_check(port_data)) {
+        debugf("Incorrect pin\n");
+        rc = VT1211_ERR_INCRCT_PIN;
+        break;
+      }
+
+      if (!vt1211_pin_check_perm(pid, port_data) && vt1211_pin_is_busy(port_data)) {
+        debugf("Only owner can get pin\n"); 
+        rc = VT1211_ERR_PERM;
+        break;
+      }
+
+      port_data->data = vt_pin_get(port_data->port, port_data->pin);
+
+      debugf("OK. Data: %02X\n", port_data->data);
+      nbytes = sizeof(gpio_data_t);
+      rc = EOK;
       break;
     }
     case VT1211_REQ_PORT: {
@@ -330,7 +366,7 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
         break;
       }
 
-      if (!vt1211_port_check_perm1(pid, port_data)) {
+      if (!vt1211_port_check_perm(pid, port_data)) {
         debugf("Only owner can free port\n");
         rc = VT1211_ERR_PERM;
         break;
@@ -357,7 +393,7 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
         break;
       }
 
-      if (!vt1211_port_check_perm1(pid, port_data) && vt1211_port_is_busy(port_data)) {
+      if (!vt1211_port_check_perm(pid, port_data) && vt1211_port_is_busy(port_data)) {
         debugf("Only owner can configure port\n");
         rc = VT1211_ERR_PERM;
         break;
@@ -377,7 +413,7 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
         break;
       }
 
-      if (!vt1211_port_check_perm1(pid, port_data) && vt1211_port_is_busy(port_data)) {
+      if (!vt1211_port_check_perm(pid, port_data) && vt1211_port_is_busy(port_data)) {
         debugf("Only owner can set port\n");
         rc = VT1211_ERR_PERM;
         break;
@@ -398,7 +434,7 @@ int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb) {
         break;
       }
 
-      if (!vt1211_port_check_perm1(pid, port_data) && vt1211_port_is_busy(port_data)) {
+      if (!vt1211_port_check_perm(pid, port_data) && vt1211_port_is_busy(port_data)) {
         debugf("Only owner can set port\n");
         rc = VT1211_ERR_PERM;
         break;
